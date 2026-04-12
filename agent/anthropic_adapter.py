@@ -167,6 +167,7 @@ _FAST_MODE_BETA = "fast-mode-2026-02-01"
 _OAUTH_ONLY_BETAS = [
     "claude-code-20250219",
     "oauth-2025-04-20",
+    "context-1m-2025-08-07",
 ]
 
 # Claude Code identity — required for OAuth requests to be routed correctly.
@@ -315,6 +316,7 @@ def build_anthropic_client(api_key: str, base_url: str = None):
         # not use Anthropic's sk-ant-api prefix and would otherwise be misread as
         # Anthropic OAuth/setup tokens.
         kwargs["auth_token"] = api_key
+        kwargs["api_key"] = None  # Prevent SDK from reading ANTHROPIC_API_KEY env var
         if common_betas:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
     elif _is_third_party_anthropic_endpoint(base_url):
@@ -331,9 +333,15 @@ def build_anthropic_client(api_key: str, base_url: str = None):
         # without Claude Code's fingerprint, requests get intermittent 500s.
         all_betas = common_betas + _OAUTH_ONLY_BETAS
         kwargs["auth_token"] = api_key
+        # Explicitly set api_key=None to prevent the SDK from reading
+        # ANTHROPIC_API_KEY from the environment.  When both auth_token and
+        # api_key are set, the SDK sends both X-Api-Key and Authorization
+        # headers — the empty X-Api-Key from .env overrides the valid Bearer
+        # token, causing Anthropic to reject the request as unauthenticated.
+        kwargs["api_key"] = None
         kwargs["default_headers"] = {
             "anthropic-beta": ",".join(all_betas),
-            "user-agent": f"claude-cli/{_get_claude_code_version()} (external, cli)",
+            "User-Agent": f"claude-cli/{_get_claude_code_version()} (external, cli)",
             "x-app": "cli",
         }
     else:
@@ -342,7 +350,14 @@ def build_anthropic_client(api_key: str, base_url: str = None):
         if common_betas:
             kwargs["default_headers"] = {"anthropic-beta": ",".join(common_betas)}
 
-    return _anthropic_sdk.Anthropic(**kwargs)
+    client = _anthropic_sdk.Anthropic(**kwargs)
+    # When using Bearer auth (auth_token), ensure api_key is None so the SDK
+    # does not also send an X-Api-Key header.  The SDK's constructor reads
+    # ANTHROPIC_API_KEY from the environment when api_key is not passed,
+    # which can produce an empty-string api_key that overrides valid OAuth.
+    if kwargs.get("auth_token") and not kwargs.get("api_key"):
+        client.api_key = None
+    return client
 
 
 def build_anthropic_bedrock_client(region: str):
