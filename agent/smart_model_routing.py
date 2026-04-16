@@ -8,6 +8,32 @@ from typing import Any, Dict, Optional
 
 from utils import is_truthy_value
 
+_OPUS_KEYWORD_MARKERS = {"[OPUS]", "[HEAVY]", "[CRÍTICO]", "[CRITICO]", "[ARCHITECTURE]"}
+_CONTINUATION_MARKERS_ES = {"continúa", "continua", "sigue", "resume", "dale", "mismo tema"}
+
+
+def has_opus_keyword(message: str) -> bool:
+    if not message:
+        return False
+    upper = message.upper()
+    return any(marker in upper for marker in _OPUS_KEYWORD_MARKERS)
+
+
+def is_continuation_turn(message: str) -> bool:
+    if not message:
+        return False
+    lowered = message.lower().strip()
+    import re
+    for marker in _CONTINUATION_MARKERS_ES:
+        if " " in marker:
+            if marker in lowered:
+                return True
+        else:
+            if re.search(rf"\b{re.escape(marker)}\b", lowered):
+                return True
+    return False
+
+
 _COMPLEX_KEYWORDS = {
     "debug",
     "debugging",
@@ -79,6 +105,12 @@ def choose_cheap_model_route(user_message: str, routing_config: Optional[Dict[st
 
     text = (user_message or "").strip()
     if not text:
+        return None
+
+    # OPUS keyword and continuation turn bail-outs
+    if has_opus_keyword(text):
+        return None
+    if is_continuation_turn(text):
         return None
 
     max_chars = _coerce_int(cfg.get("max_simple_chars"), 160)
