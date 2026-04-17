@@ -42,8 +42,8 @@ def _write_synthetic_jsonl(path: Path, *, total: int = 200) -> Path:
     spec = (
         [("gpt-5-mini", "copilot", True, None, 300, 150, 100.0)] * 140
         + [("claude-sonnet-4.6", "copilot", True, None, 800, 400, 600.0)] * 50
-        + [("claude-opus-4.6", "copilot", True, None, 2000, 1000, 2500.0)] * 8
-        + [("claude-opus-4.6", "copilot", False, "TimeoutError", 0, 0, 5000.0)] * 2
+        + [("claude-opus-4.7", "copilot", True, None, 2000, 1000, 2500.0)] * 8
+        + [("claude-opus-4.7", "copilot", False, "TimeoutError", 0, 0, 5000.0)] * 2
     )
     assert len(spec) == total
     step = timedelta(days=7) / total
@@ -90,12 +90,12 @@ def test_report_from_synthetic_fixture(tmp_path):
 
     md = out.read_text(encoding="utf-8")
     assert "DATOS SINTÉTICOS" in md
-    assert "claude-opus-4.6" in md
+    assert "claude-opus-4.7" in md
     assert "gpt-5-mini" in md
     # Worst should be opus (2 failures out of 10), optimal should be mini
     assert "worst_model" in md
     assert "optimal_model" in md
-    assert "`claude-opus-4.6`" in md  # appears as worst
+    assert "`claude-opus-4.7`" in md  # appears as worst
     assert "`gpt-5-mini`" in md  # appears as optimal
     # Dream scope section present
     assert "Dream scope" in md
@@ -163,7 +163,7 @@ def test_summarize_by_model_accumulates_premium_units(tmp_path):
 
     # Opus: 8 successful events with tokens 2000+1000=3000, mult=5 → 15 units each → 120
     # Plus 2 failures with 0 tokens → 0 → total still 120
-    assert by_model["claude-opus-4.6"]["total_premium_units"] == pytest.approx(120.0, rel=1e-3)
+    assert by_model["claude-opus-4.7"]["total_premium_units"] == pytest.approx(120.0, rel=1e-3)
     # Sonnet: 50 events × (800+400) × 1 / 1000 = 60
     assert by_model["claude-sonnet-4.6"]["total_premium_units"] == pytest.approx(60.0, rel=1e-3)
     # Mini: 140 events × 0 multiplier = 0
