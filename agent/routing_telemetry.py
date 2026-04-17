@@ -187,6 +187,7 @@ def summarize(events: list[TelemetryEvent]) -> dict:
         
         d = by_model_data[model]
         d["requests"] += 1
+        d["premium_units"] += ev.premium_units
         total_tokens += ev.tokens_in + ev.tokens_out
         total_premium_units += ev.premium_units
         

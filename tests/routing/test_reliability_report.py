@@ -149,3 +149,25 @@ def test_dream_scope_math(tmp_path):
     assert dream["savings_per_day"] > 0
     assert 0 < dream["savings_pct"] <= 1.0
     assert dream["projection_30d_optimistic"] > dream["projection_30d_conservative"]
+
+
+def test_summarize_by_model_accumulates_premium_units(tmp_path):
+    """Regression: total_premium_units per model must sum per-event units."""
+    sys.path.insert(0, str(WORKTREE))
+    from agent.routing_telemetry import load_events, summarize
+
+    store = _write_synthetic_jsonl(tmp_path / "t.jsonl")
+    events = load_events(store=store)
+    summary = summarize(events)
+    by_model = summary["by_model"]
+
+    # Opus: 8 successful events with tokens 2000+1000=3000, mult=5 → 15 units each → 120
+    # Plus 2 failures with 0 tokens → 0 → total still 120
+    assert by_model["claude-opus-4.6"]["total_premium_units"] == pytest.approx(120.0, rel=1e-3)
+    # Sonnet: 50 events × (800+400) × 1 / 1000 = 60
+    assert by_model["claude-sonnet-4.6"]["total_premium_units"] == pytest.approx(60.0, rel=1e-3)
+    # Mini: 140 events × 0 multiplier = 0
+    assert by_model["gpt-5-mini"]["total_premium_units"] == 0.0
+    # Total across models must equal summary-wide total
+    per_model_sum = sum(m["total_premium_units"] for m in by_model.values())
+    assert per_model_sum == pytest.approx(summary["total_premium_units"], rel=1e-6)
