@@ -376,15 +376,15 @@ def test_wrap_resolve_turn_route_records_success(isolated_store):
     call_count = 0
     
     @wrap_resolve_turn_route(store=isolated_store)
-    def fake_resolve_turn(label, prompt, config):
+    def fake_resolve_turn(user_message, routing_config, primary):
         nonlocal call_count
         call_count += 1
-        return {"model": "gpt-5-mini", "provider": "copilot"}
+        return {"model": "gpt-5-mini", "runtime": {"provider": "copilot"}, "label": None}
     
-    result = fake_resolve_turn("simple_turn", "hello", {})
+    result = fake_resolve_turn("hello", {}, {"model": "gpt-5-mini"})
     
     assert call_count == 1
-    assert result == {"model": "gpt-5-mini", "provider": "copilot"}
+    assert result == {"model": "gpt-5-mini", "runtime": {"provider": "copilot"}, "label": None}
     
     # Check event was recorded
     events = load_events(store=isolated_store)
@@ -393,4 +393,4 @@ def test_wrap_resolve_turn_route_records_success(isolated_store):
     assert ev.success is True
     assert ev.latency_ms is not None
     assert ev.latency_ms > 0
-    assert ev.turn_kind == "simple_turn"
+    assert ev.turn_kind == "primary"

@@ -265,19 +265,27 @@ def wrap_resolve_turn_route(store: Optional[Path] = None):
     """Decorator for resolve_turn_route functions.
     
     Records a telemetry event with:
-      - success=True
+      - success=True/False
       - latency measured
       - tokens_in=0, tokens_out=0
-      - turn_kind inferred from label
+      - turn_kind inferred from result label ("smart route" vs primary fallback)
+    
+    The decorated function signature is:
+        fn(user_message: str, routing_config: Optional[Dict], primary: Dict) -> Dict
+    
+    If the wrapped function raises, the exception is re-raised after recording.
+    If the function returns normally (even if it fell back to primary internally),
+    success=True and turn_kind is inferred from the result's label.
     """
     def decorator(fn):
         @wraps(fn)
-        def wrapper(label, prompt, config, *args, **kwargs):
+        def wrapper(user_message, routing_config, primary, *args, **kwargs):
             start = time.perf_counter()
+            success = True
+            error_type = None
+            result = None
             try:
-                result = fn(label, prompt, config, *args, **kwargs)
-                success = True
-                error_type = None
+                result = fn(user_message, routing_config, primary, *args, **kwargs)
             except Exception as e:
                 result = None
                 success = False
@@ -286,20 +294,38 @@ def wrap_resolve_turn_route(store: Optional[Path] = None):
             finally:
                 latency_ms = (time.perf_counter() - start) * 1000.0
                 
-                # Infer turn_kind from label if not already set
-                turn_kind = label if label else "unknown"
-                
                 # Extract model/provider from result if available
                 model = "unknown"
                 provider = "unknown"
+                label = None
                 if isinstance(result, dict):
                     model = result.get("model", "unknown")
-                    provider = result.get("provider", "unknown")
+                    runtime = result.get("runtime", {})
+                    if isinstance(runtime, dict):
+                        provider = runtime.get("provider", "unknown")
+                    else:
+                        provider = result.get("provider", "unknown")
+                    label = result.get("label")
+                
+                # Infer turn_kind from label
+                if not success:
+                    turn_kind = "error"
+                elif label and "smart route" in label.lower():
+                    turn_kind = "smart_route"
+                elif result is not None and isinstance(result, dict) and result.get("label") is None:
+                    # No label means primary was used (no routing happened)
+                    turn_kind = "primary"
+                else:
+                    # Has a label but not "smart route" - could be primary_fallback
+                    if label and "primary" in label.lower():
+                        turn_kind = "primary_fallback"
+                    else:
+                        turn_kind = "primary"
                 
                 event = build_event(
                     model=model,
                     provider=provider,
-                    domain=config.get("domain", "general") if isinstance(config, dict) else "general",
+                    domain="general",
                     decision_source="resolve_turn_route",
                     turn_kind=turn_kind,
                     success=success,
